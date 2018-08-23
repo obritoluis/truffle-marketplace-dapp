@@ -31,11 +31,13 @@ contract Marketplace {
 
     /* Structs */
     struct Administrator {
+        address addr;
         string name;
         bool isEnabled; // Enable admin permissions
     }
 
     struct StoreOwner {
+        address addr;
         string name;
         uint balance;
         bool isEnabled; // Enable store owner permissions
@@ -66,24 +68,40 @@ contract Marketplace {
 
 
     /* Modifiers */
-    modifier verifyOwner() {
+    modifier isOwner() {
         require (msg.sender == owner, "You're not the contract owner.");
         _;
     }
 
-    modifier verifyAdmin() {
+    modifier isAdmin() {
         require (administrators[msg.sender].isEnabled == true, "You're not a marketplace administrator.");
         _;
     }
 
-    modifier isStoreOwner() {
-        require (storeOwners[msg.sender].isEnabled == true, "You're not a store owner.");
+    modifier isStoreOwnerEnabled() {
+        require (storeOwners[msg.sender].isEnabled == true, "You are not able to create stores.");
         _;
     }
 
-    modifier checkProductInfo(uint _price, uint _quantity) {
+    modifier checkStoreExistence(uint _id) {
+        require (stores[_id].id == _id, "The provided storefront ID doesn't exist.");
+        _;
+    }
+    
+    modifier checkStoreOwner(uint _id) {
+        require (stores[_id].storeOwner == msg.sender, "You can only register products in a store you own.");
+        _;
+    }
+
+    modifier checkInsertedProductInfo(uint _price, uint _quantity) {
         require (_price > 0, "Product price has to be greater than zero.");
         require (_quantity >= 0, "Product quantity has to be equal or greater than zero.");
+        _;
+    }
+
+    modifier checkProductExistenceAndQuantity(uint _id, uint _quantity) {
+        require (products[_id].id == _id, "The provided product ID doesn't exist.");
+        require (products[_id].quantity >= _quantity, "There's not enough stock available to fullfil your order.");
         _;
     }
 
@@ -96,17 +114,18 @@ contract Marketplace {
         marketplaceName = "Ethan Marketplace";
 
         /* Set the inital value for storeId */
-        storeId = 0;
+        storeId = 1;
 
         /* Set the inital value for produtcId */
-        productId = 0;
+        productId = 1;
     }
 
 
     /* Functions */
     /* Register a marketplace administrator */
-    function registerAdmin(address _address, string _name) public verifyOwner {
+    function registerAdmin(address _address, string _name) public isOwner() {
         administrators[_address] = Administrator({
+            addr: _address,
             name: _name,
             isEnabled: true
         });
@@ -115,8 +134,10 @@ contract Marketplace {
     }
 
     /* Register a store owner */
-    function registerStoreOwner(address _address, string _name) public verifyAdmin {
+    function registerStoreOwner(address _address, string _name) public isAdmin() {
+
         storeOwners[_address] = StoreOwner({
+            addr: _address,
             name: _name,
             balance: 0, // Store owners balance always start with zero
             isEnabled: true
@@ -126,7 +147,7 @@ contract Marketplace {
     }
 
     /* Register a store */
-    function registerStore(string _name, string _description) public isStoreOwner {
+    function registerStore(string _name, string _description) public isStoreOwnerEnabled() {
         
         stores[storeId] = Store({
             id: storeId,
@@ -143,10 +164,7 @@ contract Marketplace {
 
     /* Register a product */
     function registerProduct(string _name, string _description, uint _price, uint _quantity, uint _storefrontId) public
-        checkProductInfo(_price, _quantity) isStoreOwner {
-
-        require (_storefrontId == "exists", "");
-        require (_storefrontId == "is from msg.sender | msg.sender == storeOwner", "");
+        isStoreOwnerEnabled() checkStoreExistence(_storefrontId) checkStoreOwner(_storefrontId) checkInsertedProductInfo(_price, _quantity) {
 
         products[productId] = Product({
             id: productId,
@@ -160,6 +178,11 @@ contract Marketplace {
         emit productWasRegistered(productId, _name, _price, _storefrontId);
 
         productId += 1;
+    }
+
+    /* Buy a product */
+    function buyProduct(uint _id, uint _quantity) public checkProductExistenceAndQuantity(_id, _quantity) {
+        products[_id].quantity -= _quantity;
     }
 
 }
