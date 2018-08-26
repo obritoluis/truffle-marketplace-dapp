@@ -9,20 +9,24 @@ contract Marketplace {
     string public marketplaceName;
 
     /* Map marketplace administrators */
-    mapping (address => Administrator) public administrators;
+    mapping (address => Administrator) public administratorsMapping;
+    /* Save administrator addresses in an array */
+    address[] public administrators;
 
     /* Map registered store owners */
-    mapping (address => StoreOwner) public storeOwners;
+    mapping (address => StoreOwner) public storeOwnersMapping;
+    /* Save store owners addresses in an array */
+    address[] public storeOwners;
 
     /* storeId will be used to track stores */
     uint public storeId;
     /* Map registered stores */
-    mapping (uint => Store) public stores;
+    mapping (uint => Store) public storesMapping;
 
     /* productId will be used to track products */
     uint public productId;
     /* Map registered products */
-    mapping (uint => Product) public products;
+    mapping (uint => Product) public productsMapping;
 
 
     /* Enums */
@@ -74,22 +78,22 @@ contract Marketplace {
     }
 
     modifier isAdmin() {
-        require (administrators[msg.sender].isEnabled == true, "You're not a marketplace administrator.");
+        require (administratorsMapping[msg.sender].isEnabled == true, "You're not a marketplace administrator.");
         _;
     }
 
     modifier isStoreOwnerEnabled() {
-        require (storeOwners[msg.sender].isEnabled == true, "You are not able to create stores.");
+        require (storeOwnersMapping[msg.sender].isEnabled == true, "You are not able to create stores.");
         _;
     }
 
     modifier checkStoreExistence(uint _id) {
-        require (stores[_id].id == _id, "The provided storefront ID doesn't exist.");
+        require (storesMapping[_id].id == _id, "The provided storefront ID doesn't exist.");
         _;
     }
     
     modifier checkStoreOwner(uint _id) {
-        require (stores[_id].storeOwner == msg.sender, "You can only register products in a store you own.");
+        require (storesMapping[_id].storeOwner == msg.sender, "You can only register products in a store you own.");
         _;
     }
 
@@ -100,8 +104,8 @@ contract Marketplace {
     }
 
     modifier checkProductExistenceAndQuantity(uint _id, uint _quantity) {
-        require (products[_id].id == _id, "The provided product ID doesn't exist.");
-        require (products[_id].quantity >= _quantity, "There's not enough stock available to fullfil your order.");
+        require (productsMapping[_id].id == _id, "The provided product ID doesn't exist.");
+        require (productsMapping[_id].quantity >= _quantity, "There's not enough stock available to fullfil your order.");
         _;
     }
 
@@ -121,22 +125,28 @@ contract Marketplace {
     }
 
 
-    /* Functions */
     /* Register a marketplace administrator */
     function registerAdmin(address _address, string _name) public isOwner() {
-        administrators[_address] = Administrator({
+        administratorsMapping[_address] = Administrator({
             addr: _address,
             name: _name,
             isEnabled: true
         });
 
+        administrators.push(_address); // Add registered admin address to admins arrays
+
         emit specialUserWasRegistered(_address, _name);
+    }
+
+    /* Retrieve marketplace administrators */
+    function getAdmins() public view returns (address[]) {
+        return administrators;
     }
 
     /* Register a store owner */
     function registerStoreOwner(address _address, string _name) public isAdmin() {
 
-        storeOwners[_address] = StoreOwner({
+        storeOwnersMapping[_address] = StoreOwner({
             addr: _address,
             name: _name,
             balance: 0, // Store owners balance always start with zero
@@ -149,7 +159,7 @@ contract Marketplace {
     /* Register a store */
     function registerStore(string _name, string _description) public isStoreOwnerEnabled() {
         
-        stores[storeId] = Store({
+        storesMapping[storeId] = Store({
             id: storeId,
             name: _name,
             description: _description,
@@ -166,7 +176,7 @@ contract Marketplace {
     function registerProduct(string _name, string _description, uint _price, uint _quantity, uint _storefrontId) public
         isStoreOwnerEnabled() checkStoreExistence(_storefrontId) checkStoreOwner(_storefrontId) checkInsertedProductInfo(_price, _quantity) {
 
-        products[productId] = Product({
+        productsMapping[productId] = Product({
             id: productId,
             name: _name,
             description: _description,
@@ -182,7 +192,7 @@ contract Marketplace {
 
     /* Buy a product */
     function buyProduct(uint _id, uint _quantity) public checkProductExistenceAndQuantity(_id, _quantity) {
-        products[_id].quantity -= _quantity;
+        productsMapping[_id].quantity -= _quantity;
     }
 
 }
