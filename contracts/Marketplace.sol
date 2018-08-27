@@ -18,16 +18,19 @@ contract Marketplace {
     /* Save store owners addresses in an array */
     address[] public storeOwners;
 
-    /* storeId will be used to track stores */
+    /* storeId will be used to identify stores */
     uint public storeId;
     /* Map registered stores */
     mapping (uint => Store) public storesMapping;
+    /* Save stores' storeId id in an array */
+    uint[] public stores;
 
-    /* productId will be used to track products */
+    /* productId will be used to identify products */
     uint public productId;
     /* Map registered products */
     mapping (uint => Product) public productsMapping;
-
+    /* Save products' productId in an array */
+    uint[] public products;
 
     /* Enums */
     enum StoreState { Opened, Closed }
@@ -60,7 +63,7 @@ contract Marketplace {
         string name;
         string description;
         uint price;
-        uint quantity;
+        uint stock;
         uint storefrontId;
     }
 
@@ -68,7 +71,8 @@ contract Marketplace {
     /* Events */
     event specialUserWasRegistered (address specialUserAddress, string name);
     event storeWasRegistered (uint id, string name);
-    event productWasRegistered (uint id, string name, uint price, uint store);
+    event productWasRegistered (uint id, string name, uint price, uint stock, uint store);
+    event productWasBought (uint id, string name, uint quantity, uint amountToPay, string store);
 
 
     /* Modifiers */
@@ -97,15 +101,15 @@ contract Marketplace {
         _;
     }
 
-    modifier checkInsertedProductInfo(uint _price, uint _quantity) {
+    modifier checkInsertedProductInfo(uint _price, uint _stock) {
         require (_price > 0, "Product price has to be greater than zero.");
-        require (_quantity >= 0, "Product quantity has to be equal or greater than zero.");
+        require (_stock >= 0, "Product stock has to be equal or greater than zero.");
         _;
     }
 
     modifier checkProductExistenceAndQuantity(uint _id, uint _quantity) {
         require (productsMapping[_id].id == _id, "The provided product ID doesn't exist.");
-        require (productsMapping[_id].quantity >= _quantity, "There's not enough stock available to fullfil your order.");
+        require (productsMapping[_id].stock >= _quantity, "There's not enough stock available to fullfil your order.");
         _;
     }
 
@@ -115,7 +119,7 @@ contract Marketplace {
         owner = msg.sender;
 
         /* Set the Marketplace name */
-        marketplaceName = "Ethan Marketplace";
+        marketplaceName = "Ethereum Marketplace";
 
         /* Set the inital value for storeId */
         storeId = 1;
@@ -133,7 +137,7 @@ contract Marketplace {
             isEnabled: true
         });
 
-        administrators.push(_address); // Add registered admin address to admins arrays
+        administrators.push(_address); // Add registered admin address to admins array
 
         emit specialUserWasRegistered(_address, _name);
     }
@@ -153,7 +157,19 @@ contract Marketplace {
             isEnabled: true
         });
 
+        storeOwners.push(_address); // Add registered store owner address to store owners array
+
         emit specialUserWasRegistered(_address, _name);
+    }
+
+    /* Retrieve store owners*/
+    function getStoreOwners() public view returns (address[]) {
+        return storeOwners;
+    }
+
+    /* Retrieve stores' storeId */
+    function getStoreOwnerBalance(address _addr) public view returns (uint) {
+        return storeOwnersMapping[_addr].balance;
     }
 
     /* Register a store */
@@ -167,32 +183,57 @@ contract Marketplace {
             state: StoreState.Opened
         });
 
+        stores.push(storeId); // Add registered store ID to stores array
+
         emit storeWasRegistered(storeId, _name);
 
         storeId += 1;
     }
 
+    /* Retrieve stores' storeId */
+    function getStores() public view returns (uint[]) {
+        return stores;
+    }
+
     /* Register a product */
-    function registerProduct(string _name, string _description, uint _price, uint _quantity, uint _storefrontId) public
-        isStoreOwnerEnabled() checkStoreExistence(_storefrontId) checkStoreOwner(_storefrontId) checkInsertedProductInfo(_price, _quantity) {
+    function registerProduct(string _name, string _description, uint _price, uint _stock, uint _storefrontId) public
+        isStoreOwnerEnabled() checkStoreExistence(_storefrontId) checkStoreOwner(_storefrontId) checkInsertedProductInfo(_price, _stock) {
 
         productsMapping[productId] = Product({
             id: productId,
             name: _name,
             description: _description,
             price: _price,
-            quantity: _quantity,
+            stock: _stock,
             storefrontId: _storefrontId
         });
 
-        emit productWasRegistered(productId, _name, _price, _storefrontId);
+        products.push(productId); // Add registered product ID to products array
+
+        emit productWasRegistered(productId, _name, _price, _stock, _storefrontId);
 
         productId += 1;
     }
 
+    /* Retrieve products' productId */
+    function getProducts() public view returns (uint[]) {
+        return products;
+    }
+
     /* Buy a product */
-    function buyProduct(uint _id, uint _quantity) public checkProductExistenceAndQuantity(_id, _quantity) {
-        productsMapping[_id].quantity -= _quantity;
+    function buyProduct(uint _id, uint _quantity) public payable checkProductExistenceAndQuantity(_id, _quantity) {
+        uint amountToPay = productsMapping[_id].price * _quantity;
+
+        // Only accepts the right amount, refunds cost gas ;)
+        require(msg.value == amountToPay, "Please send the exact amount to finish your order.");
+        
+        // Decrease product stock
+        productsMapping[_id].stock -= _quantity;
+
+        // Transfer the amount to pay to the store owner
+        storesMapping[productsMapping[_id].storefrontId].storeOwner.transfer(msg.value);
+        
+        emit productWasBought(_id, productsMapping[_id].name, _quantity, amountToPay, storesMapping[productsMapping[_id].storefrontId].name);
     }
 
 }

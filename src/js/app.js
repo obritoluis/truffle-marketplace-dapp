@@ -5,26 +5,26 @@ App = {
   init: function() {
     return App.initWeb3();
   },
-  
+
   initWeb3: function() {
     // Checking if Web3 has been injected by Metamask
-    if (typeof web3 !== 'undefined' ) {
+    if (typeof web3 !== 'undefined') {
       App.web3Provider = web3.currentProvider;
     } else {
       // If no injected web3 instance is detected. fall back to Ganache
       App.web3Provider = new Web3.providers.HttpProvider("http://localhost:8545");
     }
     web3 = new Web3(App.web3Provider);
-    
+
     return App.initContract();
   },
-  
+
   initContract: function() {
     // Get the necessary contract artifact file and instantiate it with truffle-contract
     $.getJSON('Marketplace.json', function(data) {
       var MarketplaceArtifact = data;
       App.contracts.Marketplace = TruffleContract(MarketplaceArtifact);
-      
+
       // Set the provider for our contract
       App.contracts.Marketplace.setProvider(App.web3Provider);
 
@@ -33,59 +33,116 @@ App = {
   },
 
   renderContractAndVisitorData: function() {
-    // Check Metamask current account, check its permissions and write it on document
-    function fillVisitorData(_ownerAddress) {
-      var visitorAccount = web3.eth.accounts[0];
-      $('#visitorAccount').text(visitorAccount);   
-      if (visitorAccount == _ownerAddress) {
-        $("#visitorPermissions").html("<b>Contract Owner</b>");
-      } else {
-        $("#visitorPermissions").html("no special");
+    
+    // Check Metamask current account    
+    var visitorAccount = web3.eth.accounts[0];
+    function checkVisitorAccount() {
+      if (visitorAccount !== web3.eth.accounts[0]) {
+        visitorAccount = web3.eth.accounts[0];
+        fillDashboardData();
       }
-    };       
+    }
+    
+    // Check visitor permissions and "render"  its dashboard
+    function fillDashboardData() {
 
-    App.contracts.Marketplace.deployed().then(function(instance) {
-      // Get marketplace name
-      instance.marketplaceName().then(function(result){
-        $("#marketplaceName").text(result);
+      // Visitor Metamask current account
+      $("#visitorAccount").text(web3.eth.accounts[0]);
+      
+      // Visitor Metamask current account balanace
+      web3.eth.getBalance(web3.eth.accounts[0], function(err, balance) {
+        $("#visitorBalance").text(web3.fromWei(balance, "ether") + " ETH");
       });
 
-      // Get contract owner address
-      instance.owner().then(function(result){
-        // Verify if the current visitor is the contract owner
-        fillVisitorData(result);
-
-        // Verify if the current Metamask account has changes and update de UI
-        var accountInterval = setInterval(function() {
-          if (web3.eth.accounts[0] !== visitorAccount) {
-            fillVisitorData(result);
+      App.contracts.Marketplace.deployed().then(function(instance) {
+        
+        // Get marketplace name
+        instance.marketplaceName().then(function(marketplaceName) {
+          $("#marketplaceName").text(marketplaceName);
+        });
+        
+        // Check what kind of user the visitor is and the marketplace name
+        CheckUsers = {
+          init: function() {
+            return CheckUsers.owner(instance);
+          },
+          owner: function(instance) {
+            instance.owner().then(function(contracOwnerAddress) {
+              if (contracOwnerAddress.includes(web3.eth.accounts[0])) {
+                $("#visitorPermissions").text("Contract Owner");
+                $(".dashboardArea").each(function() {
+                  $(this).removeClass("d-block").addClass("d-none");
+                });
+                $("#ownerArea").removeClass("d-none").addClass("d-block");
+              } else {
+                return CheckUsers.admin(instance);
+              }
+            });
+          },
+          admin: function(instance) {
+            instance.getAdmins().then(function(adminAddresses) {
+              if (adminAddresses.includes(web3.eth.accounts[0])) {
+                $("#visitorPermissions").text("Marketplace Administrator");
+                $(".dashboardArea").each(function() {
+                  $(this).removeClass("d-block").addClass("d-none");
+                });
+                $("#adminArea").removeClass("d-none").addClass("d-block");
+              } else {
+                return CheckUsers.storeOwner(instance);
+              }
+            });
+          },
+          storeOwner: function(instance) {
+            instance.getStoreOwners().then(function(storeOwnersAddresses) {
+              if (storeOwnersAddresses.includes(web3.eth.accounts[0])) {
+                $("#visitorPermissions").text("Store Owner");
+                $(".dashboardArea").each(function() {
+                  $(this).removeClass("d-block").addClass("d-none");
+                });
+                $("#storeOwnerArea").removeClass("d-none").addClass("d-block");
+              } else {
+                return CheckUsers.shopper();
+              }
+            });
+          },
+          shopper: function() {
+            $("#visitorPermissions").text("Shopper");
+            $(".dashboardArea").each(function() {
+              $(this).removeClass("d-block").addClass("d-none");
+            });
           }
-        }, 100);
+        }
+        CheckUsers.init();
       });
-    });
 
-    return App.handleAdminData();
+      return App.managementArea();
+    };
+    fillDashboardData();
+
+    // Verify if the current Metamask account has changes and update de UI
+    setInterval(checkVisitorAccount, 100);
   },
 
-  handleAdminData: function() {
+  managementArea: function() {
     App.contracts.Marketplace.deployed().then(function(instance) {
-      // Register store onwer on submit
+
+      // Register marketplace administrator on submit
       $("#adminForm").submit(function(event) {
+        event.preventDefault();
+
         var addr = $("#adminAddress").val();
         var name = $("#adminName").val();
 
         instance.registerAdmin(addr, name).then(function() {
           var accountInterval = setTimeout(function() {
             location.reload(); // Refresh page (not the best way to do it)
-          }, 2000);
+          }, 3000);
         });
-
-        event.preventDefault();
       });
 
-      instance.getAdmins().then(function(adminAddresses){
+      // Get marketplace administrators
+      instance.getAdmins().then(function(adminAddresses) {
         for (i = 0; i < adminAddresses.length; i++) {
-          
           instance.administratorsMapping(adminAddresses[i]).then(function(adminArray) {
             // Administrators table
             var tableRowHtml = "<tr><td>_</td><td>_</td><td>_</td></tr>";
@@ -95,13 +152,122 @@ App = {
             $("#adminsTable").append(tableRowHtml);
           });
         }
-
       });
 
-      return true;
+      // Register store onwer on submit
+      $("#storeOwnerForm").submit(function(event) {
+        event.preventDefault();
+
+        var addr = $("#storeOwnerAddress").val();
+        var name = $("#storeOwnerName").val();
+
+        instance.registerStoreOwner(addr, name).then(function() {
+          var accountInterval = setTimeout(function() {
+            location.reload(); // Refresh page (not the best way to do it)
+          }, 3000);
+        });
+      });
+
+      // Get store owners
+      instance.getStoreOwners().then(function(storeOwnersAddresses) {
+        for (i = 0; i < storeOwnersAddresses.length; i++) {
+          instance.storeOwnersMapping(storeOwnersAddresses[i]).then(function(storeOwnersArray) {
+            // Store Owners table
+            var tableRowHtml = "<tr><td>_</td><td>_</td><td>_</td><td>_</td></tr>";
+            for (a = 0; a < storeOwnersArray.length; a++) {
+              tableRowHtml = tableRowHtml.replace("_", storeOwnersArray[a]);
+            }
+            $("#storeOwnersTable").append(tableRowHtml);
+          });
+        }
+      });
+
+      // Register store on submit
+      $("#storeForm").submit(function(event) {
+        event.preventDefault();
+  
+        var name = $("#storeName").val();
+        var description = $("#storeDescription").val();
+  
+        instance.registerStore(name, description).then(function() {
+          var accountInterval = setTimeout(function() {
+            location.reload(); // Refresh page (not the best way to do it)
+          }, 3000);
+        });
+      });
+
+      // Register product on submit
+      $("#productForm").submit(function(event) {
+        event.preventDefault();
+  
+        var name = $("#productName").val();
+        var description = $("#productDescription").val();
+        var price = $("#productPrice").val();
+        var quantity = $("#productQuantity").val();
+        var store = $("#productStore").val();
+  
+        instance.registerProduct(name, description, price, quantity, store).then(function() {
+          var accountInterval = setTimeout(function() {
+            location.reload(); // Refresh page (not the best way to do it)
+          }, 3000);
+        });
+      });
+
+      // Get stores
+      instance.getStores().then(function(storesId) {
+        $("#storesTable tbody").empty();
+
+        for (i = 0; i < storesId.length; i++) {
+          instance.storesMapping(storesId[i]).then(function(storesIdArray) {
+            // Stores table
+            var tableRowHtml = "<tr><td>_</td><td>_</td><td>_</td><td>_</td><td>_</td></tr>";
+            
+            if (storesIdArray.includes(web3.eth.accounts[0])) {
+              for (a = 0; a < storesIdArray.length; a++) {
+                tableRowHtml = tableRowHtml.replace("_", storesIdArray[a]);
+              }
+              $("#storesTable tbody").append(tableRowHtml);
+            }
+          });
+        }
+      });
+
+      // Get products
+      instance.getProducts().then(function(productId) {
+        $("#productsTable tbody").empty();
+        
+        console.log($("#storesTable tbody tr td:first-child").text());
+
+        for (i = 0; i < productId.length; i++) {
+          instance.productsMapping(productId[i]).then(function(productIdArray) {
+            
+            var tableRowHtml = "<tr><td>_</td><td>_</td><td>_</td><td class='price'>_</td><td>_</td><td>_</td><td><input type='number' class='form-control quantity' placeholder='Quantity'></td><td><button id='buyBtn' type='button' class='btn btn-success btn-sm' aria-haspopup='true' aria-expanded='false'>Buy</button></td></tr>";
+
+            for (a = 0; a < productIdArray.length; a++) {
+              tableRowHtml = tableRowHtml.replace("_", productIdArray[a]);
+            }
+
+            $("#productsTable tbody").append(tableRowHtml);
+          });
+        }
+      })
+
+      // Buy product
+      $("#buyBtn").submit(function(event) {
+        console.log(price,quantity);
+        var price = $(this).parent('td').siblings(".price").text();
+        var quantity = $(this).parent('td').siblings(".quantity").val();
+        console.log(price,quantity);
+        instance.buyProduct(price, description).then(function() {
+
+          var accountInterval = setTimeout(function() {
+            location.reload(); // Refresh page (not the best way to do it)
+          }, 3000);
+        });
+      });
+    
     });
   }
-
 }
 
 $(function() {
