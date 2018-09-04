@@ -8,10 +8,12 @@ It's incomplete since I didn't have the time to accomplish all the functionaliti
 But you can test it anyway, and intereact with the smart contract.
 
 ###### How to get started:
-* Clone the repo
-* run npm install
-* run Truffle compile
-* run Truffle migrate
+* git clone this repo
+* launch ganache
+* npm install
+* truffle compile
+* truffle migrate
+* npm run dev
 
 I've used this nice dashboard for the UI: https://github.com/BootstrapDash/StarAdmin-Free-Bootstrap-Admin-Template
 
